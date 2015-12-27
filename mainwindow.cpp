@@ -18,6 +18,9 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->btn_entry, SIGNAL(clicked()), this, SLOT(btn_clicked_newEntry()));
     connect(ui->table_entrys, SIGNAL(cellChanged(int,int)), this, SLOT(table_valueChanged(int,int)));
 
+    connect(ui->date_start, SIGNAL(dateTimeChanged(QDateTime)), this, SLOT(startDateChanged(QDateTime)));
+    connect(ui->spn_dailyBudget, SIGNAL(valueChanged(double)), this, SLOT(dailyBudgetChanged(double)));
+
     // Create global database object, open and connect
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName( "./finance.db" );
@@ -35,6 +38,53 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->table_entrys->setHorizontalHeaderLabels(tableHeader);
 
     QSqlQuery qry;
+    // Create configuration table
+    qry.prepare(
+        "CREATE TABLE IF NOT EXISTS"
+        "`config` ("
+            "`startdate` INTEGER UNIQUE,"
+            "`dailybudget` REAL"
+        ")"
+    );
+    if( !qry.exec() )
+        qDebug() << qry.lastError();
+    else
+        qDebug() << "Initial config table created!";
+
+    qry.prepare( "SELECT * FROM `config`");
+    if( !qry.exec() )
+        qDebug() << qry.lastError();
+    else
+    {
+        qDebug( "Selected config!" );
+
+        QSqlRecord rec = qry.record();
+
+        if(rec.count() == 0)
+        {
+            qry.prepare(
+                "INSERT INTO"
+                "`config`("
+                    "`startdate`,`dailybudget`"
+                ") VALUES ("
+                    "0, 0.0"
+                ")"
+            );
+            if( !qry.exec() )
+                qDebug() << qry.lastError();
+            else
+                qDebug() << "Initial config table entry created!";
+        }
+        else
+        {
+            qry.next();
+            QDateTime dt = QDateTime::fromTime_t(qry.value(0).toInt());
+            ui->date_start->setDateTime(dt);
+            ui->spn_dailyBudget->setValue(qry.value(1).toDouble());
+        }
+    }
+
+    // Create data table
     qry.prepare(
         "CREATE TABLE IF NOT EXISTS"
         "`revenues` ("
@@ -48,11 +98,47 @@ MainWindow::MainWindow(QWidget *parent) :
     if( !qry.exec() )
         qDebug() << qry.lastError();
     else
-        qDebug() << "Initial table created!";
+        qDebug() << "Initial data table created!";
 
     refreshTable();
+
+    // Graph
+    price_time = QVector<double>(PRICE_HISTORY);
+    price_time = QVector<double>(PRICE_HISTORY);
+    for(int i = 0; i < PRICE_HISTORY; i++)
+    {
+        price_time[i] = -i;
+    }
+    ui->plot_month->addGraph();
+    ui->plot_month->graph(0)->setData(price_time, price_day);
+    ui->plot_month->xAxis->setLabel("Days");
+    ui->plot_month->xAxis->setRange(-PRICE_HISTORY, 0);
+    ui->plot_month->yAxis->setVisible(false); // Display the price at the right side
+    ui->plot_month->yAxis2->setVisible(true);
+    ui->plot_month->yAxis2->setLabel("Price");
+    ui->plot_month->setBackground(Qt::transparent);
+    ui->plot_month->setAttribute(Qt::WA_OpaquePaintEvent, false);
 }
 
+MainWindow::~MainWindow()
+{
+    ui->table_entrys->blockSignals(true);
+    QTableWidgetItem *itab;
+    for(int r = 0; r < ui->table_entrys->rowCount(); r++)
+    {
+        for(int c = 0; c < ui->table_entrys->rowCount(); c++)
+        {
+            itab = ui->table_entrys->item(r, c);
+            delete itab;
+        }
+    }
+    delete ui;
+    qDebug() << "destroyed mainwindow";
+}
+
+/*
+ * Refresh table content based on database
+ */
 void MainWindow::refreshTable(void)
 {
     QSqlQuery qry;
@@ -78,11 +164,16 @@ void MainWindow::refreshTable(void)
                 {
                     itab = new QTableWidgetItem;
                     ui->table_entrys->setItem(r, c, itab);
+
+                    if(tableHeader.at(c) == "Timestamp") // Make column Timestamp non-editable
+                    {
+                        ui->table_entrys->item(r, c)->setFlags(ui->table_entrys->item(r, c)->flags() & ~Qt::ItemIsEditable);
+                    }
                 }
             }
             QDateTime t;
             t.setTime_t(qry.value(0).toInt());
-            ui->table_entrys->item(r, 0)->setText(t.toString("dd.MM.yyyy"));
+            ui->table_entrys->item(r, 0)->setText(t.toString("dd.MM.yyyy hh:mm:ss"));
             ui->table_entrys->item(r, 1)->setText(qry.value(1).toString());
             ui->table_entrys->item(r, 2)->setText(qry.value(2).toString());
             ui->table_entrys->item(r, 3)->setText(qry.value(3).toString());
@@ -93,20 +184,12 @@ void MainWindow::refreshTable(void)
     }
 }
 
-MainWindow::~MainWindow()
+/*
+ * Refresh graph with the current budget calculation
+ */
+void MainWindow::refreshGraph(void)
 {
-    ui->table_entrys->blockSignals(true);
-    QTableWidgetItem *itab;
-    for(int r = 0; r < ui->table_entrys->rowCount(); r++)
-    {
-        for(int c = 0; c < ui->table_entrys->rowCount(); c++)
-        {
-            itab = ui->table_entrys->item(r, c);
-            delete itab;
-        }
-    }
-    delete ui;
-    qDebug() << "destroyed mainwindow";
+
 }
 
 /*
@@ -138,17 +221,52 @@ void MainWindow::btn_clicked_newEntry(void)
 /*
  * Slot: Table value changed
  */
-
 void MainWindow::table_valueChanged(int row, int col)
 {
+    QString tableText = ui->table_entrys->item(row, col)->text();
+
     QSqlQuery qry;
     qry.prepare(
         "UPDATE `revenues`"
-        "SET `"+ tableHeader.at(col) +"`='" + ui->table_entrys->item(row, col)->text() + "'"
+        "SET `"+ tableHeader.at(col) +"`='" + tableText + "'"
         "WHERE `_rowid_`='" + QString::number(row + 1) + "'"
     );
     if(!qry.exec())
         qDebug() << qry.lastError();
     else
         qDebug("Updated!");
+}
+
+/*
+ * Slot: Config: Start Date for budget calculation changed
+ */
+void MainWindow::startDateChanged(QDateTime d)
+{
+    QSqlQuery qry;
+    qry.prepare(
+        "UPDATE `config`"
+        "SET `startdate`='" + QString::number(d.toTime_t()) + "'"
+        "WHERE `_rowid_`='1'"
+    );
+    if(!qry.exec())
+        qDebug() << qry.lastError();
+    else
+        qDebug("Updated config: startdate!");
+}
+
+/*
+ * Slot: Config: Daily budget changed
+ */
+void MainWindow::dailyBudgetChanged(double newBudget)
+{
+    QSqlQuery qry;
+    qry.prepare(
+        "UPDATE `config`"
+        "SET `dailybudget`='" + QString::number(newBudget) + "'"
+        "WHERE `_rowid_`='1'"
+    );
+    if(!qry.exec())
+        qDebug() << qry.lastError();
+    else
+        qDebug("Updated config: dalyBudget!");
 }

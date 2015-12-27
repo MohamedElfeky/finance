@@ -60,7 +60,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
         QSqlRecord rec = qry.record();
 
-        if(rec.count() == 0)
+        if(!qry.next())
         {
             qry.prepare(
                 "INSERT INTO"
@@ -77,7 +77,6 @@ MainWindow::MainWindow(QWidget *parent) :
         }
         else
         {
-            qry.next();
             QDateTime dt = QDateTime::fromTime_t(qry.value(0).toInt());
             ui->date_start->setDateTime(dt);
             ui->spn_dailyBudget->setValue(qry.value(1).toDouble());
@@ -104,7 +103,7 @@ MainWindow::MainWindow(QWidget *parent) :
 
     // Graph
     price_time = QVector<double>(PRICE_HISTORY);
-    price_time = QVector<double>(PRICE_HISTORY);
+    price_day = QVector<double>(PRICE_HISTORY);
     for(int i = 0; i < PRICE_HISTORY; i++)
     {
         price_time[i] = -i;
@@ -118,6 +117,8 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->plot_month->yAxis2->setLabel("Price");
     ui->plot_month->setBackground(Qt::transparent);
     ui->plot_month->setAttribute(Qt::WA_OpaquePaintEvent, false);
+
+    refreshGraph();
 }
 
 MainWindow::~MainWindow()
@@ -189,7 +190,33 @@ void MainWindow::refreshTable(void)
  */
 void MainWindow::refreshGraph(void)
 {
+    QSqlQuery qry;
+    qry.prepare(
+        "SELECT `" + tableHeader.at(4) + "`" //Price
+        "FROM revenues"
+    );
+    if( !qry.exec() )
+        qDebug() << qry.lastError();
+    else
+    {
+        qDebug( "Selected!" );
 
+        QSqlRecord rec = qry.record();
+
+        for(int r = 0; qry.next(); r++)
+        {
+            /*for(int i = 0; i < rec.count(); i++)
+            {
+                price_day[i] = i;
+            }*/
+            qDebug() << qry.value(r).toDouble();
+        }
+    }
+
+    ui->plot_month->graph(0)->setData(price_time, price_day);
+    ui->plot_month->yAxis2->setRange(0, 10); // yAxis 2 is the right y-axis. yAxis 1 is disabled, but all values obtain to that axis, why the range has to be set at both axes
+    ui->plot_month->yAxis->setRange(0, 10);
+    ui->plot_month->replot();
 }
 
 /*

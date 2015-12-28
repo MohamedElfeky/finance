@@ -15,11 +15,6 @@ MainWindow::MainWindow(QWidget *parent) :
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
-    connect(ui->btn_entry, SIGNAL(clicked()), this, SLOT(btn_clicked_newEntry()));
-    connect(ui->table_entrys, SIGNAL(cellChanged(int,int)), this, SLOT(table_valueChanged(int,int)));
-
-    connect(ui->date_start, SIGNAL(dateTimeChanged(QDateTime)), this, SLOT(startDateChanged(QDateTime)));
-    connect(ui->spn_dailyBudget, SIGNAL(valueChanged(double)), this, SLOT(dailyBudgetChanged(double)));
 
     // Create global database object, open and connect
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE");
@@ -36,6 +31,7 @@ MainWindow::MainWindow(QWidget *parent) :
     tableHeader << "Timestamp" << "Business" << "Category" << "Article" << "Price";
     ui->table_entrys->setColumnCount(tableHeader.count());
     ui->table_entrys->setHorizontalHeaderLabels(tableHeader);
+    ui->table_entrys->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
 
     QSqlQuery qry;
     // Create configuration table
@@ -58,9 +54,7 @@ MainWindow::MainWindow(QWidget *parent) :
     {
         qDebug( "Selected config!" );
 
-        QSqlRecord rec = qry.record();
-
-        if(!qry.next())
+        if(!qry.next()) // No entry
         {
             qry.prepare(
                 "INSERT INTO"
@@ -100,6 +94,7 @@ MainWindow::MainWindow(QWidget *parent) :
         qDebug() << "Initial data table created!";
 
     refreshTable();
+    refreshOutgoings();
 
     // Graph
     price_time = QVector<double>(PRICE_HISTORY);
@@ -111,14 +106,22 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->plot_month->addGraph();
     ui->plot_month->graph(0)->setData(price_time, price_day);
     ui->plot_month->xAxis->setLabel("Days");
-    ui->plot_month->xAxis->setRange(-PRICE_HISTORY, 0);
     ui->plot_month->yAxis->setVisible(false); // Display the price at the right side
     ui->plot_month->yAxis2->setVisible(true);
     ui->plot_month->yAxis2->setLabel("Price");
     ui->plot_month->setBackground(Qt::transparent);
     ui->plot_month->setAttribute(Qt::WA_OpaquePaintEvent, false);
 
+    connect(ui->plot_month->yAxis, SIGNAL(rangeChanged(QCPRange)), ui->plot_month->yAxis2, SLOT(setRange(QCPRange)));
+
     refreshGraph();
+
+    // Connect signals after everything has been initialized
+    connect(ui->btn_entry, SIGNAL(clicked()), this, SLOT(btn_clicked_newEntry()));
+    connect(ui->table_entrys, SIGNAL(cellChanged(int,int)), this, SLOT(table_valueChanged(int,int)));
+
+    connect(ui->date_start, SIGNAL(dateTimeChanged(QDateTime)), this, SLOT(startDateChanged(QDateTime)));
+    connect(ui->spn_dailyBudget, SIGNAL(valueChanged(double)), this, SLOT(dailyBudgetChanged(double)));
 }
 
 MainWindow::~MainWindow()
@@ -186,36 +189,74 @@ void MainWindow::refreshTable(void)
 }
 
 /*
- * Refresh graph with the current budget calculation
+ * Refresh value for all outgoings
  */
-void MainWindow::refreshGraph(void)
+
+void MainWindow::refreshOutgoings(void)
 {
     QSqlQuery qry;
     qry.prepare(
-        "SELECT `" + tableHeader.at(4) + "`" //Price
+        "SELECT `"+ tableHeader.at(0) +"`,`"+ tableHeader.at(4) + "`"
         "FROM revenues"
     );
     if( !qry.exec() )
         qDebug() << qry.lastError();
     else
     {
-        qDebug( "Selected!" );
+        qDebug( "Selected prices!" );
 
-        QSqlRecord rec = qry.record();
+        double all_outgoings = 0; // Calculate all outgoings since start
 
         for(int r = 0; qry.next(); r++)
         {
-            /*for(int i = 0; i < rec.count(); i++)
+            if(qry.value(0).toUInt() > ui->date_start->dateTime().toTime_t())
             {
-                price_day[i] = i;
-            }*/
-            qDebug() << qry.value(r).toDouble();
+                all_outgoings += qry.value(1).toDouble();
+            }
+        }
+
+        ui->lbl_outgoings->setText(QString::number(all_outgoings));
+    }
+}
+
+/*
+ * Refresh graph with the current budget calculation
+ */
+void MainWindow::refreshGraph(void)
+{
+    int dayPeriodSinceDate = ui->date_start->dateTime().daysTo(QDateTime::currentDateTime());
+
+    for(int i = PRICE_HISTORY - dayPeriodSinceDate; i > 0; i--) // In case the dayPeriodSinceDate are smaller than PRICE_HISTORY set all non-considerated values to 0
+    {
+        price_day[i] = 0;
+    }
+
+    for(int i = dayPeriodSinceDate - 1; i >= 0; i--) // For every day since start day, starting with the given start day
+    {
+        QSqlQuery qry;
+
+        // Query all revenues of this day
+        qry.prepare(
+            "SELECT `" + tableHeader.at(4) + "` " //Price
+            "FROM revenues "
+            "WHERE `" + tableHeader.at(0) + "`>" + QString::number(ui->date_start->dateTime().toTime_t() + abs(i - dayPeriodSinceDate) * 60 * 60 * 24) + " AND `Timestamp`<" + QString::number(ui->date_start->dateTime().toTime_t() + abs(i - dayPeriodSinceDate - 1) * 60 * 60 * 24)
+        );
+        if( !qry.exec() )
+            qDebug() << qry.lastError();
+        else
+        {
+            price_day[i] = price_day[i + 1] + ui->spn_dailyBudget->value();
+            while(qry.next())
+            {
+                price_day[i] += qry.value(0).toDouble();
+            }
         }
     }
 
+    ui->lbl_save->setText(QString::number(price_day[0]));
+
     ui->plot_month->graph(0)->setData(price_time, price_day);
-    ui->plot_month->yAxis2->setRange(0, 10); // yAxis 2 is the right y-axis. yAxis 1 is disabled, but all values obtain to that axis, why the range has to be set at both axes
-    ui->plot_month->yAxis->setRange(0, 10);
+    ui->plot_month->rescaleAxes();
     ui->plot_month->replot();
 }
 
@@ -261,7 +302,10 @@ void MainWindow::table_valueChanged(int row, int col)
     if(!qry.exec())
         qDebug() << qry.lastError();
     else
-        qDebug("Updated!");
+        qDebug("Updated table!");
+
+    refreshGraph();
+    refreshOutgoings();
 }
 
 /*
@@ -279,6 +323,8 @@ void MainWindow::startDateChanged(QDateTime d)
         qDebug() << qry.lastError();
     else
         qDebug("Updated config: startdate!");
+
+    refreshGraph();
 }
 
 /*
@@ -296,4 +342,6 @@ void MainWindow::dailyBudgetChanged(double newBudget)
         qDebug() << qry.lastError();
     else
         qDebug("Updated config: dalyBudget!");
+
+    refreshGraph();
 }

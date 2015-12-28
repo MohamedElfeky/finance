@@ -21,6 +21,7 @@ public:
 private:
     void refreshTable(void);
     void refreshGraph(void);
+    void refreshOutgoings(void);
 
     Ui::MainWindow *ui;
 

@@ -14,7 +14,7 @@
    <string>Finance</string>
   </property>
   <widget class="QWidget" name="centralWidget">
-   <layout class="QVBoxLayout" name="verticalLayout_2">
+   <layout class="QVBoxLayout" name="verticalLayout_2" stretch="0,1,0">
     <item>
      <widget class="QGroupBox" name="grp_config">
       <property name="title">
@@ -22,7 +22,7 @@
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout">
        <item>
-        <widget class="QLabel" name="label">
+        <widget class="QLabel" name="lbl_date_start">
          <property name="text">
           <string>History start time:</string>
          </property>
@@ -32,7 +32,7 @@
         <widget class="QDateTimeEdit" name="date_start"/>
        </item>
        <item>
-        <widget class="QLabel" name="label_2">
+        <widget class="QLabel" name="lbl_budget">
          <property name="text">
           <string>Daily budget:</string>
          </property>
@@ -49,7 +49,7 @@
       <property name="title">
        <string>Data</string>
       </property>
-      <layout class="QVBoxLayout" name="verticalLayout" stretch="1,5,4">
+      <layout class="QVBoxLayout" name="verticalLayout" stretch="0,1,1">
        <item>
         <layout class="QHBoxLayout" name="layout_entry">
          <item>
@@ -109,13 +109,52 @@
         </layout>
        </item>
        <item>
-        <widget class="QTableWidget" name="table_entrys"/>
+        <widget class="QTableWidget" name="table_entrys">
+         <property name="autoFillBackground">
+          <bool>false</bool>
+         </property>
+         <property name="showGrid">
+          <bool>true</bool>
+         </property>
+        </widget>
        </item>
        <item>
         <widget class="QCustomPlot" name="plot_month" native="true"/>
        </item>
       </layout>
      </widget>
+    </item>
+    <item>
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lbl_save_lbl">
+        <property name="text">
+         <string>Current savings since start:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="lbl_save">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lbl_outgoings_lbl">
+        <property name="text">
+         <string>All outgoings since start:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="lbl_outgoings">
+        <property name="text">
+         <string/>
+        </property>
+       </widget>
+      </item>
+     </layout>
     </item>
    </layout>
   </widget>

@@ -31,7 +31,7 @@ MainWindow::MainWindow(QWidget *parent) :
     tableHeader << "Timestamp" << "Business" << "Category" << "Article" << "Price";
     ui->table_entrys->setColumnCount(tableHeader.count());
     ui->table_entrys->setHorizontalHeaderLabels(tableHeader);
-    ui->table_entrys->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+    //ui->table_entrys->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
 
     QSqlQuery qry;
     // Create configuration table
@@ -231,6 +231,8 @@ void MainWindow::refreshGraph(void)
         price_day[i] = 0;
     }
 
+    double price_tmp = 0;
+
     for(int i = dayPeriodSinceDate - 1; i >= 0; i--) // For every day since start day, starting with the given start day
     {
         QSqlQuery qry;
@@ -245,10 +247,14 @@ void MainWindow::refreshGraph(void)
             qDebug() << qry.lastError();
         else
         {
-            price_day[i] = price_day[i + 1] + ui->spn_dailyBudget->value();
+            price_tmp += ui->spn_dailyBudget->value();
             while(qry.next())
             {
-                price_day[i] += qry.value(0).toDouble();
+                price_tmp += qry.value(0).toDouble();
+            }
+            if(dayPeriodSinceDate < PRICE_HISTORY)
+            {
+                price_day[i] = price_tmp;
             }
         }
     }
